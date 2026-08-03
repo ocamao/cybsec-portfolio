@@ -149,7 +149,7 @@ ssh -L 5000:localhost:5000 sabrina@192.168.0.20
 
 Ahora, accediendo a través de nuestro navegador web y manipulando el parámetro `name`, confirmamos la vulnerabilidad:
 
-![Evidencia del SSTI](images/03-SSTI.jpg)
+![Evidencia del SSTI](images/03-SSTI.JPG)
 
 Basándonos en repositorios de explotación conocidos (como la guía de *vulhub* para Flask SSTI), crafteamos un payload para convertir esta inyección de plantillas en Ejecución Remota de Comandos (RCE). Inyectamos el comando para entablar una reverse shell y la recibimos en nuestra máquina atacante, obteniendo acceso como `webmaster`.
 
