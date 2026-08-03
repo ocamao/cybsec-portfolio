@@ -116,9 +116,7 @@ sudo -l
 # (webmaster) NOPASSWD: /usr/bin/python /opt/app.py *
 ```
 
-Podemos ejecutar un script en Python como el usuario `webmaster`. Revisamos el contenido del archivo `02-app.jpg`.
-
-![Código de la App](02-app.jpg)
+Podemos ejecutar un script en Python como el usuario `webmaster`. Revisamos el contenido del archivo `app.py`.
 
 El código expone una aplicación en Flask con una vulnerabilidad clara de Server Side Template Injection (SSTI) en la función `hello_ssti()`:
 
@@ -151,7 +149,7 @@ ssh -L 5000:localhost:5000 sabrina@192.168.0.20
 
 Ahora, accediendo a través de nuestro navegador web y manipulando el parámetro `name`, confirmamos la vulnerabilidad:
 
-![Evidencia del SSTI](03-SSTI.jpg)
+![Evidencia del SSTI](images/03-SSTI.jpg)
 
 Basándonos en repositorios de explotación conocidos (como la guía de *vulhub* para Flask SSTI), crafteamos un payload para convertir esta inyección de plantillas en Ejecución Remota de Comandos (RCE). Inyectamos el comando para entablar una reverse shell y la recibimos en nuestra máquina atacante, obteniendo acceso como `webmaster`.
 
