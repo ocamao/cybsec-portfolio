@@ -1,4 +1,4 @@
-# Writeup: Quick5 (HackMyVM)
+# Writeup: Máquina Quick5 (HackMyVM)
 
 ---
 
