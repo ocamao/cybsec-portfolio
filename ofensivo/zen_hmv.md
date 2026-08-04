@@ -189,14 +189,16 @@ User hua may run the following commands on zen:
     (ALL : ALL) NOPASSWD: /usr/sbin/add-shell zen
 ```
 
-`hua` puede ejecutar `/usr/sbin/add-shell zen` como cualquier usuario, incluido root. Para entender qué hace internamente, lo analizamos con `strace`:
+`hua` puede ejecutar `/usr/sbin/add-shell zen` como cualquier usuario, incluido root. Para entender qué hace internamente, lo analizamos con `strace` y llaman la atención estas líneas:
 
 ```bash
-hua@zen:~$ strace -f /usr/sbin/add-shell zen 2>&1 | grep -E "stat|execve" | grep awk
+hua@zen:~$ strace -f /usr/sbin/add-shell zen
+...
 stat("/usr/local/sbin/awk", 0x7ffc3700cca0) = -1 ENOENT (No such file or directory)
 stat("/usr/local/bin/awk", 0x7ffc3700cca0) = -1 ENOENT (No such file or directory)
 stat("/usr/sbin/awk", 0x7ffc3700cca0)   = -1 ENOENT (No such file or directory)
 stat("/usr/bin/awk", {st_mode=S_IFREG|0755, st_size=674624, ...}) = 0
+...
 ```
 
 El binario invoca `awk` sin una ruta absoluta, delegando su resolución en el PATH del usuario:
