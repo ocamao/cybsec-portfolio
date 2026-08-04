@@ -189,10 +189,10 @@ User hua may run the following commands on zen:
     (ALL : ALL) NOPASSWD: /usr/sbin/add-shell zen
 ```
 
-`hua` puede ejecutar `/usr/sbin/add-shell zen` como cualquier usuario, incluido root. Para entender qué hace internamente, lo analizamos con `strace` y llaman la atención estas líneas:
+`hua` puede ejecutar `/usr/sbin/add-shell zen` como cualquier usuario, incluido root. Para entender qué hace internamente, lo analizamos con `strace` y llaman la atención las siguientes líneas:
 
 ```bash
-hua@zen:~$ strace -f /usr/sbin/add-shell zen
+hua@zen:~$ strace /usr/sbin/add-shell zen
 ...
 stat("/usr/local/sbin/awk", 0x7ffc3700cca0) = -1 ENOENT (No such file or directory)
 stat("/usr/local/bin/awk", 0x7ffc3700cca0) = -1 ENOENT (No such file or directory)
