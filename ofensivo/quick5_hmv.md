@@ -135,7 +135,7 @@ El volumen de resultados es tan alto que cancelamos el comando, pero al inicio d
 /home/andrew/snap/firefox/common/.mozilla/firefox/ii990jpt.default/logins.json
 ```
 
-![Captura de logins.json](images/quick-2.jpg)
+![Captura de logins.json](images/quick2.jpg)
 
 Este archivo contiene los campos `encryptedUsername` y `encryptedPassword`. Probamos `hashid` y `hashcat` sobre estos valores sin ningún resultado — y no es casualidad: Firefox no almacena estas credenciales como un hash tradicional, sino cifradas mediante **NSS** (Network Security Services), un mecanismo reversible pensado para que el propio navegador recupere la contraseña en texto plano al rellenar un formulario. Lo que hace falta aquí no es crackear, sino descifrar.
 
