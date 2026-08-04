@@ -96,7 +96,7 @@ sudo -l
 
 Podemos ejecutar el binario `/usr/bin/sl` como cualquier usuario sin proporcionar contraseña. Aunque GTFOBins no lista este binario para evadir restricciones, al ejecutarlo nos muestra el clásico tren en ASCII. 
 
-![GIF del tren ASCII](images/tren.gif)
+![GIF del tren ASCII](images/ginger_tren.gif)
 
 Tras comprobar las *capabilities* (`getcap -r / 2>/dev/null`) sin éxito, decido realizar una enumeración manual por los directorios de los usuarios (ubicados en `/home`: `webmaster`, `sabrina` y `caroline`). 
 
@@ -155,7 +155,7 @@ ssh -L 5000:localhost:5000 sabrina@192.168.0.20
 
 Ahora, accediendo a través de nuestro navegador web y manipulando el parámetro `name`, confirmamos la vulnerabilidad:
 
-![Evidencia del SSTI](images/03-SSTI.JPG)
+![Evidencia del SSTI](images/ginger_ssti.jpg)
 
 Basándonos en repositorios de explotación conocidos (como la guía de *vulhub* para Flask SSTI), crafteamos un payload para convertir esta inyección de plantillas en Ejecución Remota de Comandos (RCE). Inyectamos el comando para entablar una reverse shell y la recibimos en nuestra máquina atacante, obteniendo acceso como `webmaster`.
 
