@@ -4,6 +4,12 @@ En este writeup detallo el proceso de explotación y escalada de privilegios de 
 
 ---
 
+## Resumen
+
+Ginger es una máquina Linux (Debian) que expone un sitio WordPress vulnerable a inyección SQL no autenticada a través de un plugin desactualizado. Tras obtener acceso al panel de administración y conseguir ejecución de código mediante la subida de un plugin malicioso, la escalada de privilegios se convierte en una cadena de cinco eslabones que combina enumeración manual de ficheros, credenciales expuestas en el buffer del kernel, un Server-Side Template Injection en una aplicación Flask interna, el abuso de una tarea cron sustituible, y una ventana de permisos mal gestionada sobre `/etc/passwd`.
+
+---
+
 ## 1. Reconocimiento Inicial
 
 Comenzamos comprobando la conectividad con la máquina objetivo mediante una traza ICMP. El TTL de 64 nos indica que nos encontramos ante un sistema operativo Linux.
@@ -149,7 +155,7 @@ ssh -L 5000:localhost:5000 sabrina@192.168.0.20
 
 Ahora, accediendo a través de nuestro navegador web y manipulando el parámetro `name`, confirmamos la vulnerabilidad:
 
-![Evidencia del SSTI](images/03-SSTI.JPG)
+![Evidencia del SSTI](images/03-ssti.jpg)
 
 Basándonos en repositorios de explotación conocidos (como la guía de *vulhub* para Flask SSTI), crafteamos un payload para convertir esta inyección de plantillas en Ejecución Remota de Comandos (RCE). Inyectamos el comando para entablar una reverse shell y la recibimos en nuestra máquina atacante, obteniendo acceso como `webmaster`.
 
@@ -208,3 +214,14 @@ uid=0(root) gid=0(root) groups=0(root)
 ```
 
 ¡Máquina rooteada exitosamente!
+
+---
+
+## 5. Detección y Mitigación
+
+- **Plugin de WordPress vulnerable y desactualizado**: `cp-multi-view-calendar` presentaba una inyección SQL no autenticada conocida públicamente. Un inventario de plugins con escaneo periódico de CVEs habría detectado el riesgo antes de que llegara a producción.
+- **Credenciales expuestas en el buffer del kernel**: que la contraseña de `sabrina` terminara siendo legible vía `dmesg` sugiere que en algún momento se introdujo en un prompt o proceso que acabó registrándola — cualquier entrada de texto puede persistir en lugares inesperados del sistema si no se gestiona con cuidado.
+- **Regla de sudo excesivamente permisiva**: permitir `/usr/bin/python /opt/app.py *` con un comodín abierto elimina cualquier control sobre qué argumentos puede recibir el script. Las reglas de sudo deberían limitarse a la ejecución exacta necesaria, sin comodines.
+- **Aplicación Flask desplegada con `debug=True`**: el propio código fuente lo confirma. Esto expone el depurador interactivo de Werkzeug ante cualquier excepción no controlada, una vía de ejecución remota de código independiente del SSTI que nunca debería llegar a un entorno accesible por otros usuarios.
+- **Script de tareas programadas sustituible por un usuario de menor privilegio**: `backup.sh` debería pertenecer exclusivamente al usuario que lo ejecuta (o a root), con permisos que impidan su borrado o sustitución desde una cuenta distinta.
+- **Ventana temporal de permisos abiertos sobre `/etc/passwd`**: cualquier operación que otorgue, aunque sea unos segundos, permisos de escritura global sobre un fichero tan crítico es explotable de forma fiable. No debería existir ninguna ventana, por breve que sea.
