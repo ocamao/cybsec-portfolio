@@ -24,7 +24,7 @@ Writeups de máquinas de [HackMyVM](https://hackmyvm.eu), cada uno con enumeraci
 
 ## 🔵 Defensivo
 
-*En construcción — próximamente: análisis de incidentes (triage) sobre retos de CyberDefenders y una detección construida desde cero con Wazuh.*
+*En construcción — próximamente: análisis de incidentes (triage) sobre retos de CyberDefenders.*
 
 ---
 
