@@ -2,8 +2,6 @@
 
 Soy una persona creativa, analítica, proactiva y adaptable, con gran capacidad de aprendizaje y resolución de problemas. Recientemente he aprobado mi primera certificación en ciberseguridad (eJPT), con ganas de aprender más y en búsqueda de mi primera posición en pentesting o SOC junior.
 
-📫 [LinkedIn](https://www.linkedin.com/in/antoni-m-consentino/)
-
 ---
 
 ## Certificaciones
