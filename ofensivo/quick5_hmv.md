@@ -1,25 +1,13 @@
 # Writeup: Máquina Quick5 - HackMyVM
 
-En este writeup detallo el proceso de explotación y escalada de privilegios de la máquina **Quick5** de la plataforma HackMyVM. La resolución abarca desde la enumeración de un sitio corporativo con múltiples subdominios, hasta la obtención de acceso inicial mediante un ataque del lado cliente sobre un proceso de selección de personal, y una escalada de privilegios basada en la recuperación de credenciales cifradas almacenadas por el navegador Firefox.
+En este writeup resolveremos la máquina **Quick5** de la plataforma HackMyVM. Empezando por la enumeración de una web con varios subdominios, conseguiremos acceso inicial aprovechándonos de un proceso de selección de personal en uno de los subdominios. La escalada de privilegios será a través de la recuperación de credenciales almacenadas por el navegador Firefox.
 
----
+## Reconocimiento Inicial
 
-## Resumen
-
-Quick5 es una máquina Linux (Ubuntu) que simula el sitio web de una empresa de automoción con varios subdominios internos. El vector de entrada no explota ninguna vulnerabilidad de servicio, sino el propio proceso humano de selección de personal: un formulario de solicitud de empleo acepta documentos ofimáticos, lo que permite subir un `.odt` con una macro maliciosa que se ejecuta al ser revisado internamente. La escalada de privilegios posterior tampoco depende de un binario mal configurado, sino de credenciales guardadas en el gestor de contraseñas de Firefox, recuperables porque el perfil no está protegido con contraseña maestra, y directamente reutilizables como root.
-
----
-
-## 1. Reconocimiento Inicial
-
-Ejecutamos un escaneo de puertos completo con `nmap` para descubrir los servicios expuestos:
+Empezamos haciendo un escaneo con `nmap` para descubrir los servicios expuestos:
 
 ```bash
-root@kali:~/hmv/Quick5/nmap# nmap -p- --open -sSCV -n -Pn 192.168.0.27 -oN tcpScan
-Starting Nmap 7.99 ( https://nmap.org ) at 2026-08-03 18:44 +0200
-Nmap scan report for 192.168.0.27
-Host is up (0.00045s latency).
-Not shown: 65533 closed tcp ports (reset)
+$>  nmap -p- --open -sSCV -n -Pn 192.168.0.27 -oN tcpScan
 PORT   STATE SERVICE VERSION
 22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.6 (Ubuntu Linux; protocol 2.0)
 | ssh-hostkey: 
@@ -28,58 +16,31 @@ PORT   STATE SERVICE VERSION
 80/tcp open  http    Apache httpd 2.4.52 ((Ubuntu))
 |_http-server-header: Apache/2.4.52 (Ubuntu)
 |_http-title: Quick Automative - Home
-MAC Address: 08:00:27:02:60:6D (Oracle VirtualBox virtual NIC)
 Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
 ```
 
-Dado que la versión de OpenSSH es 8.9p1 (superior a la 7.7, lo que dificulta la enumeración de usuarios por temporización), centramos nuestros esfuerzos en el puerto 80 (HTTP).
 
----
-
-## 2. Enumeración Web
-
-Ejecutamos `whatweb` sobre el servicio HTTP para extraer tecnologías e información de cabecera:
+Parece que el foothold tendrá que ser via web, vamos a centrarnos en el puerto 80. Acostumbro a usar `whatweb` para extraer tecnologías e información de cabecera:
 
 ```bash
-root@kali:~/hmv/Quick5/nmap# whatweb http://192.168.0.27
+$> whatweb http://192.168.0.27
 http://192.168.0.27 [200 OK] Apache[2.4.52], Bootstrap[4], Country[RESERVED][ZZ], Email[book@quick.hmv,info@quick.hmv,tech@quick.hmv], Frame, HTML5, HTTPServer[Ubuntu Linux][Apache/2.4.52 (Ubuntu)], IP[192.168.0.27], JQuery[3.4.1], Script, Title[Quick Automative - Home]
 ```
 
-Obtenemos varios correos (`book@`, `info@`, `tech@quick.hmv`) y confirmamos el dominio `quick.hmv`. Al examinar manualmente la aplicación web destacan dos hallazgos:
-- Se muestran los nombres de 8 empleados, idóneos para construir un diccionario de usuarios potenciales.
-- Existen dos formularios de contacto que permiten enviar mensajes, representando posibles vectores para probar inyecciones.
+Obtenemos varios correos (`book@quick.hmv`, `info@quick.hmv`, `tech@quick.hmv`) y confirmamos el dominio `quick.hmv`. Decido visitar la página web para echarle un ojo y hay dos cosas que me llaman la atención:
+- Se muestran los nombres de 8 empleados, nos serviría para construir un diccionario de posibles usuarios 
+- Existen dos formularios de contacto para enviar mensajes, donde podríamos probar inyecciones
 
-Al inspeccionar los enlaces mediante el cursor, se revelan además los subdominios `careers.quick.hmv` y `customer.quick.hmv` — indicio de **virtual hosting**, y motivo para fuzzear en busca de más vhosts sin enlazar.
+Haciendo hovering sobre algunos apartados de la web, puedo ver los subdominios `careers.quick.hmv` y `customer.quick.hmv`.  Parece que se hace uso de **virtual hosting**, por lo que podríamos fuzzear en busca de más subdominios. De momento incluyo `careers` y `customer` al `/etc/hosts`.
 
-Procedemos a incluir los dominios encontrados en el archivo `/etc/hosts`:
-
-```text
-192.168.0.27 quick.hmv careers.quick.hmv customer.quick.hmv
-```
-
-Al visitar `customer.quick.hmv`, se observa el siguiente aviso:
+Al visitar `customer.quick.hmv`, se muestra el siguiente mensaje:
 
 > "This page is under maintenance due to a security incident."
 
-Este tipo de mensaje, expuesto públicamente, insinúa la posible presencia de un *backdoor* o punto de entrada no remediado de un incidente previo.
-
-### Fuzzing de Virtual Hosts (VHosts)
-
-Realizamos enumeración de subdominios con `gobuster` para localizar otros vhosts activos:
+Enseguida se me ocurre que puede existir un backdoor que nos permita el foothold inicial. Vamos a seguir con el reconocimiento, como hemos dicho antes, enumerando subdominios (realmente vhosts) con `gobuster`:
 
 ```bash
 root@kali:~/hmv/Quick5/nmap# gobuster vhost -w /usr/share/SecLists/Discovery/DNS/subdomains-top1million-110000.txt -u http://quick.hmv -r --append-domain
-===============================================================
-Gobuster v3.8.2
-by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
-===============================================================
-[+] Url:                       http://quick.hmv
-[+] Method:                    GET
-[+] Threads:                   10
-[+] Wordlist:                  /usr/share/SecLists/Discovery/DNS/subdomains-top1million-110000.txt
-[+] User Agent:                gobuster/3.8.2
-[+] Timeout:                   10s
-[+] Append Domain:             true
 ===============================================================
 Starting gobuster in VHOST enumeration mode
 ===============================================================
@@ -91,17 +52,15 @@ Finished
 ===============================================================
 ```
 
-Descubrimos un nuevo subdominio, `employee.quick.hmv`. Tras añadirlo a `/etc/hosts`, comprobamos que despliega el mismo contenido de mantenimiento que `customer.quick.hmv`, sin nada explotable adicional por esta vía.
+Aparece un nuevo subdominio, `employee.quick.hmv`. Lo añado a `/etc/hosts`, pero al visitar la web muestra el mismo contenido que `customer.quick.hmv`.
 
-En `careers.quick.hmv`, en cambio, es posible aplicar a un puesto de trabajo. El formulario pide adjuntar dos archivos (currículum y carta), cada uno en formato `.odt` o `.pdf`, que serán revisados por alguien de la empresa — la superficie de ataque más prometedora de toda la enumeración.
+Sigo trasteando la web y veo que en `careers.quick.hmv`podemos aplicar a un puesto de trabajo. El formulario pide adjuntar dos archivos (currículum y carta), que pueden estar en formato `.odt` o `.pdf`. Podemos asumir que habrá alguien de la empresa revisando estos archivos, así que esto es lo mejor que tenemos hasta ahora como posible vector de entrada.
 
----
+## Acceso inicial
 
-## 3. Explotación (Initial Access)
+Hago un poco de investigación y encuentro el siguiente [recurso](https://medium.com/@akshay__0/initial-access-via-malicious-odt-macro-ac7f5d15796d) que explica cómo crear una macro maliciosa en un archivo `.odt` que nos envíe una reverse shell.
 
-Dado que los documentos subidos van a ser abiertos por una persona real dentro de la organización, investigamos cómo construir un `.odt` que ejecute código al abrirse.
-
-Abrimos LibreOffice Writer, añadimos texto cualquiera y creamos una nueva macro con el payload para obtener una shell inversa:
+Abrimos LibreOffice, escribimos cualquier cosa y guardamos el documento. Después creamos una macro para el documento con el siguiente contenido:
 
 ```basic
 Sub Main
@@ -109,43 +68,29 @@ Sub Main
 End Sub
 ```
 
-Configuramos el evento para que la macro se ejecute automáticamente al abrir el archivo y guardamos el documento en formato `.odt`. Levantamos un listener en nuestra máquina atacante y subimos el archivo a través del formulario de `careers.quick.hmv`:
+Configuramos la macro para se ejecute automáticamente al abrir el archivo y guardamos el documento. Ahora simplemente preparamos el listener en nuestra máquina atacante y subimos el archivo malicioso. Tras unos momentos, obtenemos una shell como `andrew`, lo que nos permite leer la primera flag.
 
-```bash
-nc -lvnp 443
-```
 
-Tras unos momentos, el archivo es procesado en la máquina víctima y recibimos una conexión reversa como el usuario `andrew`, lo que nos permite leer la primera flag.
+## Escalada de Privilegios
 
----
-
-## 4. Escalada de Privilegios
-
-### 4.1. De `andrew` a `root`
-
-Tras estabilizar la terminal, iniciamos la enumeración local en busca de credenciales:
-
+Haciendo enumeración manual rutinaria del sistema, lanzo 
 ```bash
 grep -r "pass" / 2>/dev/null
 ```
+pero lo cancelo al momento porque me arroja muchísimo output. Aún así, al principio del output veo algo que me llama la atención:
 
-El volumen de resultados es tan alto que cancelamos el comando, pero al inicio de la salida destaca un archivo de perfil de Firefox:
+![Captura de logins.json](images/quick-2.jpg)
 
-```
-/home/andrew/snap/firefox/common/.mozilla/firefox/ii990jpt.default/logins.json
-```
+Un archivo `/home/andrew/snap/firefox/common/.mozilla/firefox/ii990jpt.default/logins.json` que contiene los campos `encryptedUsername` y `encryptedPassword` entre otros. Pruebo con `hashid` y `hashcat` sin ningún resultado, así que decido buscar en internet "firefox decrypt", lo que rápidamente me lleva al siguiente [repo](https://github.com/unode/firefox_decrypt/). 
 
-![Captura de logins.json](images/quick2.jpg)
 
-Este archivo contiene los campos `encryptedUsername` y `encryptedPassword`. Probamos `hashid` y `hashcat` sobre estos valores sin ningún resultado — y no es casualidad: Firefox no almacena estas credenciales como un hash tradicional, sino cifradas mediante **NSS** (Network Security Services), un mecanismo reversible pensado para que el propio navegador recupere la contraseña en texto plano al rellenar un formulario. Lo que hace falta aquí no es crackear, sino descifrar.
-
-Para descifrar los datos de Firefox empleamos la herramienta [firefox_decrypt](https://github.com/unode/firefox_decrypt). Al ejecutarla directamente, falla: no encuentra `profiles.ini` en la ruta habitual (`~/.mozilla/firefox`). La razón es que Firefox está instalado vía **Snap**, cuyo sandboxing redirige el almacenamiento de datos de usuario a una ruta distinta dentro de `~/snap/`. Buscando en el sistema los archivos `.ini` filtrando por el usuario `andrew`, localizamos la ruta real:
+Al ejecutar la herramienta directamente, no encuentra `profiles.ini` en la ruta habitual (`~/.mozilla/firefox`). Buscando en el sistema los archivos `.ini` filtrando por el usuario `andrew`, localizamos la ruta real (resulta que Firefox está instalado vía Snap):
 
 ```bash
 /home/andrew/snap/firefox/common/.mozilla/firefox/profiles.ini
 ```
 
-Ejecutamos el script apuntando al directorio base correcto:
+Ejecutamos ahora con la ruta correcta:
 
 ```bash
 andrew@quick5:~$ ./firefox_decrypt.py /home/andrew/snap/firefox/common/.mozilla/firefox
@@ -155,14 +100,13 @@ Username: 'andrew.speed@quick.hmv'
 Password: 'SuperSecretPassword'
 ```
 
-Estas credenciales estaban pensadas para un portal interno de bajo privilegio, pero probamos su reutilización directamente contra el usuario `root`, y la autenticación resulta exitosa. Obtenemos acceso total con privilegios elevados junto a la flag final.
+Probamos la contraseña para `root` y funciona! Máquina rooteada, obtenemos la flag final.
 
----
 
-## 5. Detección y Mitigación
+## Detección y Mitigación
 
-- **Mensajes de mantenimiento que revelan información sensible**: anunciar públicamente que un subdominio está caído "por un incidente de seguridad" informa a cualquier atacante de que el sistema tiene un historial de compromiso. Este tipo de mensajes no debería exponer contexto de seguridad, ni siquiera de forma indirecta.
-- **Formularios de subida de documentos sin sandboxing**: un proceso de selección que abre documentos de candidatos externos debería hacerlo en un entorno aislado (máquina virtual desechable o sandbox de documentos), nunca directamente en un sistema con acceso a datos internos.
-- **Macros habilitadas por defecto en documentos externos**: cualquier documento ofimático recibido de una fuente externa debería abrirse con las macros deshabilitadas por política, o convertirse a un formato sin capacidad de ejecución antes de su revisión.
-- **Credenciales de servicios internos guardadas en el gestor de contraseñas del navegador sin contraseña maestra**: Firefox permite cifrar `logins.json` con una master password adicional; en este caso no estaba activa, ya que el descifrado funcionó sin necesidad de ella.
-- **Reutilización de contraseñas entre una cuenta de aplicación de bajo privilegio y la cuenta root**: ninguna credencial de un portal interno debería coincidir con la de una cuenta administrativa del sistema operativo — son superficies de riesgo distintas y deberían gestionarse por separado.
+- Mensaje de mantenimiento revelando un incidente de seguridad previo — no exponer problermas de seguridad en avisos públicos
+- Formulario de subida de documentos sin sandboxing — abrir archivos externos en un entorno aislado, nunca en un sistema con acceso a datos internos
+- Macros habilitadas por defecto en documentos externos — deshabilitarlas o gestionar el documento de alguna forma para evitar la ejecución
+- Credenciales de navegador (`logins.json`) almacenadas — activar el cifrado adicional que ofrece Firefox (contraseña masetra)
+- Reutilización de contraseñas (root)
