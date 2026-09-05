@@ -1,3 +1,4 @@
+
 # Writeup: Máquina Quick5 - HackMyVM
 
 En este writeup resolveremos la máquina **Quick5** de la plataforma HackMyVM. Empezando por la enumeración de una web con varios subdominios, conseguiremos acceso inicial aprovechándonos de un proceso de selección de personal en uno de los subdominios. La escalada de privilegios será a través de la recuperación de credenciales almacenadas por el navegador Firefox.
@@ -40,7 +41,7 @@ Al visitar `customer.quick.hmv`, se muestra el siguiente mensaje:
 Enseguida se me ocurre que puede existir un backdoor que nos permita el foothold inicial. Vamos a seguir con el reconocimiento, como hemos dicho antes, enumerando subdominios (realmente vhosts) con `gobuster`:
 
 ```bash
-root@kali:~/hmv/Quick5/nmap# gobuster vhost -w /usr/share/SecLists/Discovery/DNS/subdomains-top1million-110000.txt -u http://quick.hmv -r --append-domain
+$> gobuster vhost -w /usr/share/SecLists/Discovery/DNS/subdomains-top1million-110000.txt -u http://quick.hmv -r --append-domain
 ===============================================================
 Starting gobuster in VHOST enumeration mode
 ===============================================================
@@ -75,7 +76,7 @@ Configuramos la macro para se ejecute automáticamente al abrir el archivo y gua
 
 Haciendo enumeración manual rutinaria del sistema, lanzo 
 ```bash
-grep -r "pass" / 2>/dev/null
+$> grep -r "pass" / 2>/dev/null
 ```
 pero lo cancelo al momento porque me arroja muchísimo output. Aún así, al principio del output veo algo que me llama la atención:
 
@@ -93,7 +94,7 @@ Al ejecutar la herramienta directamente, no encuentra `profiles.ini` en la ruta 
 Ejecutamos ahora con la ruta correcta:
 
 ```bash
-andrew@quick5:~$ ./firefox_decrypt.py /home/andrew/snap/firefox/common/.mozilla/firefox
+$> ./firefox_decrypt.py /home/andrew/snap/firefox/common/.mozilla/firefox
 
 Website:   http://employee.quick.hmv
 Username: 'andrew.speed@quick.hmv'
