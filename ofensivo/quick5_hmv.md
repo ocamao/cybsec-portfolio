@@ -80,7 +80,7 @@ $> grep -r "pass" / 2>/dev/null
 ```
 pero lo cancelo al momento porque me arroja muchísimo output. Aún así, al principio del output veo algo que me llama la atención:
 
-![Captura de logins.json](images/quick-2.jpg)
+![Captura de logins.json](images/quick2.jpg)
 
 Un archivo `/home/andrew/snap/firefox/common/.mozilla/firefox/ii990jpt.default/logins.json` que contiene los campos `encryptedUsername` y `encryptedPassword` entre otros. Pruebo con `hashid` y `hashcat` sin ningún resultado, así que decido buscar en internet "firefox decrypt", lo que rápidamente me lleva al siguiente [repo](https://github.com/unode/firefox_decrypt/). 
 
