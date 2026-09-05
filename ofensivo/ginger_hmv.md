@@ -71,7 +71,7 @@ Nos autenticamos entonces en el panel de administración de WordPress. Normalmen
 
 Enseguida ejecuto `sudo -l`, y veo que podemos ejecutar el binario `/usr/bin/sl` como cualquier usuario sin proporcionar contraseña. Busco en GTFOBins pero no encuentro nada, y al probar de ejecutarlo...
 
-![GIF del tren ASCII](images/tren.gif)
+![GIF del tren ASCII](images/ginger_tren.gif)
 
 Tras comprobar también las *capabilities* (`getcap -r / 2>/dev/null`) sin éxito, decido enumerar el sistema manualmente un poco. Veo tres usuarios en el directorio `/home`: `webmaster`, `sabrina` y `caroline`.
 
@@ -127,7 +127,7 @@ $> ssh -L 5000:localhost:5000 sabrina@192.168.0.20
 
 Ahora, accediendo a través de nuestro navegador web y manipulando el parámetro `name`, confirmamos la vulnerabilidad:
 
-![Evidencia del SSTI](images/03-ssti.jpg)
+![Evidencia del SSTI](images/ginger_ssti.jpg)
 
 Una búsqueda rápida en Google de *"flask ssti"* nos lleva a este [repo](https://github.com/vulhub/vulhub/tree/master/flask/ssti), que nos muestra como convertir un SSTI en RCE. De esta forma podemos lanzarnos una reverse shell como `webmaster`.
 
