@@ -76,7 +76,7 @@ Configuramos la macro para se ejecute automáticamente al abrir el archivo y gua
 
 Haciendo enumeración manual rutinaria del sistema, lanzo 
 ```bash
-$> grep -r "pass" / 2>/dev/null
+grep -r "pass" / 2>/dev/null
 ```
 pero lo cancelo al momento porque me arroja muchísimo output. Aún así, al principio del output veo algo que me llama la atención:
 
