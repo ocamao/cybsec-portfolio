@@ -12,7 +12,7 @@ Soy una persona creativa, analítica, proactiva y adaptable, con gran capacidad 
 
 ## 🔴 Ofensivo
 
-Writeups de máquinas de [HackMyVM](https://hackmyvm.eu), cada uno con enumeración, explotación, escalada de privilegios y una sección de detección/mitigación.
+Writeups de máquinas de [HackMyVM](https://hackmyvm.eu), cada uno con enumeración, explotación, escalada de privilegios y una sección de detección/mitigación
 
 | Máquina | Dificultad | Resumen |
 |---|---|---|
