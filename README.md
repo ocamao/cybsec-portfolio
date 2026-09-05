@@ -6,7 +6,7 @@ Soy una persona creativa, analítica, proactiva y adaptable, con gran capacidad 
 
 ## Certificaciones
 
-- **eJPT** — eLearnSecurity / INE Security, Junior Penetration Tester ([mes año])
+- **eJPT** — eLearnSecurity / INE Security, Junior Penetration Tester (07/2026)
 
 ---
 
